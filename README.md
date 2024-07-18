@@ -11,22 +11,8 @@ Before using this gem, make sure you have the following set up:
 
 ## Installation
 
-Add this line to your application's Gemfile:
-
-```ruby
-gem 'mida'
 ```
-
-And then execute:
-
-```
-$ bundle install
-```
-
-Or install it yourself as:
-
-```
-$ gem install mida
+gem install mida-sdk
 ```
 
 ## Usage
@@ -36,7 +22,7 @@ To use the server-side A/B testing and feature flags code, follow these steps:
 1. Require the `Mida` class in your code:
 
 ```ruby
-require 'mida'
+require 'mida-sdk'
 ```
 
 2. Create an instance of the `Mida` class by providing your Mida project key:
