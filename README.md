@@ -2,13 +2,6 @@
 
 This is a Ruby gem that allows you to integrate with the Mida platform for server-side A/B testing and feature flags.
 
-## Prerequisites
-
-Before using this gem, make sure you have the following set up:
-
-- Ruby installed on your machine
-- A Mida.so account with project and experiment key
-
 ## Installation
 
 ```
