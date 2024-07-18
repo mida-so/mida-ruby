@@ -1,9 +1,11 @@
-require 'json'
 require 'net/http'
+require 'json'
 require 'uri'
 
 class Mida
-  attr_reader :public_key, :host, :user_id, :enabled_features
+  VERSION = '1.0.0'
+
+  attr_reader :public_key, :host, :user_id, :enabled_features, :max_cache_size, :feature_flag_cache
 
   def initialize(public_key, options = {})
     raise ArgumentError, "You must pass your Mida project key" unless public_key
@@ -16,7 +18,7 @@ class Mida
     @feature_flag_cache = {}
   end
 
-  def get_experiment(experiment_key, distinct_id)
+  def get_experiment(experiment_key, distinct_id = nil)
     raise ArgumentError, "You must pass your Mida experiment key" unless experiment_key
     raise ArgumentError, "You must pass your user distinct ID" unless distinct_id || @user_id
 
@@ -26,27 +28,14 @@ class Mida
       distinct_id: distinct_id || @user_id
     }
 
-    headers = { 'Content-Type' => 'application/json' }
-    headers['User-Agent'] = "mida-ruby/#{Mida::VERSION}" unless defined?(Rails)
-
-    uri = URI("#{@host}/experiment/query")
-    http = Net::HTTP.new(uri.host, uri.port)
-    http.use_ssl = true
-
-    request = Net::HTTP::Post.new(uri.path, headers)
-    request.body = data.to_json
-
-    response = http.request(request)
-
-    if response.is_a?(Net::HTTPSuccess)
-      json = JSON.parse(response.body)
-      json['version']
-    else
-      raise "HTTP Request failed: #{response.code} #{response.message}"
-    end
+    response = post_request("#{@host}/experiment/query", data)
+    json = JSON.parse(response.body)
+    json['version']
+  rescue StandardError => e
+    raise e
   end
 
-  def set_event(event_name, distinct_id, properties = {})
+  def set_event(event_name, distinct_id = nil, properties = {})
     raise ArgumentError, "You need to set an event name" unless event_name
     raise ArgumentError, "You must pass your user distinct ID" unless distinct_id || @user_id
 
@@ -57,40 +46,19 @@ class Mida
       properties: properties.to_json
     }
 
-    headers = { 'Content-Type' => 'application/json' }
-    headers['User-Agent'] = "mida-ruby/#{Mida::VERSION}" unless defined?(Rails)
-
-    uri = URI("#{@host}/experiment/event")
-    http = Net::HTTP.new(uri.host, uri.port)
-    http.use_ssl = true
-
-    request = Net::HTTP::Post.new(uri.path, headers)
-    request.body = data.to_json
-
-    response = http.request(request)
-
-    raise "HTTP Request failed: #{response.code} #{response.message}" unless response.is_a?(Net::HTTPSuccess)
+    post_request("#{@host}/experiment/event", data)
+  rescue StandardError => e
+    raise e
   end
 
-  def set_attribute(distinct_id, properties = {})
+  def set_attribute(distinct_id = nil, properties = {})
     raise ArgumentError, "You must pass your user distinct ID" unless distinct_id || @user_id
-    raise ArgumentError, "You must pass your user properties" unless properties.is_a?(Hash)
+    raise ArgumentError, "You must pass your user properties" if properties.empty?
 
     data = properties.merge(id: distinct_id || @user_id)
-
-    headers = { 'Content-Type' => 'application/json' }
-    headers['User-Agent'] = "mida-ruby/#{Mida::VERSION}" unless defined?(Rails)
-
-    uri = URI("#{@host}/track/#{@public_key}")
-    http = Net::HTTP.new(uri.host, uri.port)
-    http.use_ssl = true
-
-    request = Net::HTTP::Post.new(uri.path, headers)
-    request.body = data.to_json
-
-    response = http.request(request)
-
-    raise "HTTP Request failed: #{response.code} #{response.message}" unless response.is_a?(Net::HTTPSuccess)
+    post_request("#{@host}/track/#{@public_key}", data)
+  rescue StandardError => e
+    raise e
   end
 
   def cached_feature_flag
@@ -104,9 +72,11 @@ class Mida
   end
 
   def on_feature_flags(distinct_id = nil)
-    cached_items = cached_feature_flag.size
+    cached_items = cached_feature_flag.length
     reload_feature_flags(distinct_id)
     true
+  rescue StandardError => e
+    raise e
   end
 
   def reload_feature_flags(distinct_id = nil)
@@ -115,28 +85,33 @@ class Mida
       user_id: distinct_id
     }
 
-    headers = { 'Content-Type' => 'application/json' }
-    headers['User-Agent'] = "mida-ruby/#{Mida::VERSION}" unless defined?(Rails)
+    response = post_request("#{@host}/feature-flag", data)
+    @enabled_features = JSON.parse(response.body)
+    cache_key = "#{@public_key}:#{@user_id}"
+    @feature_flag_cache[cache_key] = @enabled_features
 
-    uri = URI("#{@host}/feature-flag")
+    if @feature_flag_cache.size > @max_cache_size
+      @feature_flag_cache.shift
+    end
+
+    true
+  rescue StandardError => e
+    raise e
+  end
+
+  private
+
+  def post_request(url, data)
+    uri = URI(url)
     http = Net::HTTP.new(uri.host, uri.port)
     http.use_ssl = true
-
-    request = Net::HTTP::Post.new(uri.path, headers)
+    request = Net::HTTP::Post.new(uri.path, 'Content-Type' => 'application/json')
+    request['User-Agent'] = "mida-ruby/#{Mida::VERSION}"
     request.body = data.to_json
 
     response = http.request(request)
+    raise StandardError, response.message unless response.is_a?(Net::HTTPSuccess)
 
-    if response.is_a?(Net::HTTPSuccess)
-      @enabled_features = JSON.parse(response.body)
-      cache_key = "#{@public_key}:#{@user_id}"
-      @feature_flag_cache[cache_key] = @enabled_features
-
-      if @feature_flag_cache.size > @max_cache_size
-        @feature_flag_cache.shift
-      end
-    else
-      raise "HTTP Request failed: #{response.code} #{response.message}"
-    end
+    response
   end
 end
