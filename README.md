@@ -78,11 +78,11 @@ mida.set_attribute(distinct_id, attributes)
 
 ### Feature Flags
 
-6. Use the `feature_enabled?` method to check if a feature flag is enabled for the current user:
+6. Use the `feature_enabled?` method to check if a feature flag is enabled for a user. Flags are cached per user, so load them first (step 7) and pass the same distinct ID:
 
 ```ruby
 feature_flag_key = 'FEATURE_FLAG_KEY'
-is_enabled = mida.feature_enabled?(feature_flag_key)
+is_enabled = mida.feature_enabled?(feature_flag_key, distinct_id)
 
 if is_enabled
   # Feature flag is enabled, perform corresponding actions
@@ -91,17 +91,20 @@ else
 end
 ```
 
-7. Use the `on_feature_flags` method to reload the feature flags for the current user:
+7. Use the `on_feature_flags` method to load (and cache) the feature flags for a user:
 
 ```ruby
-mida.on_feature_flags
+mida.on_feature_flags(distinct_id)
 ```
 
 ## API Reference
 
 ### `Mida.new(project_key, options = {})`
 - `project_key`: (required) Your Mida project key.
-- `options`: (optional) A hash of additional options.
+- `options`: (optional) A hash of additional options:
+  - `max_cache_size`: maximum number of cached feature flag entries (default `50000`).
+  - `open_timeout`: seconds to wait for the connection to open (default `5`).
+  - `read_timeout`: seconds to wait for a response (default `10`).
 
 ### `get_experiment(experiment_key, distinct_id)`
 - `experiment_key`: (required) The key of the experiment you want to get the version of.
@@ -118,15 +121,16 @@ Returns the version of the experiment.
 - `distinct_id`: (required) The distinct ID of the user.
 - `properties`: (required) A hash containing the attribute key-value pairs.
 
-### `feature_enabled?(key)`
+### `feature_enabled?(key, distinct_id = nil)`
 - `key`: (required) The key of the feature flag you want to check.
+- `distinct_id`: (optional) The distinct ID of the user whose cached flags should be checked. Flags must first be loaded for that user with `on_feature_flags`.
 
 Returns a boolean indicating whether the feature flag is enabled or not.
 
 ### `on_feature_flags(distinct_id = nil)`
 - `distinct_id`: (optional) The distinct ID of the user.
 
-Reloads the feature flags for the current user.
+Fetches and caches the feature flags for the user.
 
 ## Contributing
 
